@@ -1,4 +1,4 @@
-import NextAuth, { type NextAuthOptions } from "next-auth"
+import NextAuth from "next-auth"
 import GitHub from "next-auth/providers/github"
 import Google from "next-auth/providers/google"
 import Spotify from "next-auth/providers/spotify"
@@ -41,7 +41,12 @@ if (!isDemo) {
   }
 }
 
+// Fallback secret lets demo mode work on Vercel without any env vars.
+// Anyone running with real OAuth MUST set NEXTAUTH_SECRET to something secure.
+const secret = process.env.NEXTAUTH_SECRET || "demo-mode-placeholder-secret-change-this"
+
 const handler = NextAuth({
+  secret,
   providers,
   callbacks: {
     async jwt({ token, account }) {
