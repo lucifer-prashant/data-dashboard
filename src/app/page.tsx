@@ -6,13 +6,14 @@ import GitHubWidget from "@/components/GitHubWidget"
 import GoogleFitWidget from "@/components/GoogleFitWidget"
 import GmailWidget from "@/components/GmailWidget"
 import SpotifyWidget from "@/components/SpotifyWidget"
-import { Github, Activity, Music, LogOut, Moon, Sun } from "lucide-react"
+import { Github, Activity, Music, LogOut, Moon, Sun, GitFork, X } from "lucide-react"
 
 export default function Home() {
   const { data: session } = useSession()
   const [tokens, setTokens] = useState<{ github?: string; google?: string; spotify?: string }>({})
   const [isDark, setIsDark] = useState(true)
   const [mounted, setMounted] = useState(false)
+  const [forkDismissed, setForkDismissed] = useState(false)
 
 
   useEffect(() => {
@@ -51,6 +52,9 @@ export default function Home() {
     setTokens(prev => { const n = { ...prev }; delete n[provider]; return n })
 
   if (!mounted) return null
+
+  const isMainDeployment = window.location.hostname === "datadbpersonal.vercel.app"
+  const showForkBanner = isMainDeployment && !forkDismissed
 
   const bg = isDark ? "bg-[#080810]" : "bg-zinc-50"
   const T = isDark ? "text-zinc-100" : "text-zinc-900"
@@ -96,6 +100,35 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* Fork banner — only on the main demo deployment */}
+      {showForkBanner && (
+        <div className="border-b border-indigo-500/20 bg-indigo-500/5">
+          <div className="max-w-6xl mx-auto px-6 py-2.5 flex flex-wrap items-center gap-3">
+            <GitFork size={13} className="text-indigo-400 shrink-0" />
+            <span className="text-xs text-indigo-300 flex-1 min-w-0">
+              This is a shared demo — you can&apos;t connect your own accounts here.
+              Fork the repo and deploy your own copy to use it with real data.
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href="https://github.com/lucifer-prashant/data-dashboard"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
+              >
+                <GitFork size={11} /> Fork on GitHub
+              </a>
+              <button
+                onClick={() => setForkDismissed(true)}
+                className="p-1 rounded-lg text-indigo-400/60 hover:text-indigo-300 transition-colors"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-6xl mx-auto px-6 py-3 space-y-3">
 
