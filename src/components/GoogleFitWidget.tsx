@@ -5,17 +5,20 @@ import { useState } from "react"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts"
 import { getGoogleFitSteps } from "@/lib/google"
 import { usePersistedCache } from "@/lib/usePersistedCache"
+import { getDemoGoogleFit } from "@/lib/demoData"
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
 
 interface Props {
   accessToken: string
   isDark: boolean
+  demo?: boolean
+  onAuthError?: () => void
 }
 
 const ACCENT = "#34d399"
 const GOAL = 10000
 
-export default function GoogleFitWidget({ accessToken, isDark }: Props) {
+export default function GoogleFitWidget({ accessToken, isDark, demo = false, onAuthError }: Props) {
   const [range, setRange] = useState<"7d" | "30d" | "90d">("30d")
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -34,21 +37,39 @@ export default function GoogleFitWidget({ accessToken, isDark }: Props) {
     return { startDate: start, endDate: end }
   }, [rangeDays, offset])
 
+  const demoStepsArray = useMemo(() => {
+    if (!demo) return null
+    return getDemoGoogleFit(startDate, endDate)
+  }, [demo, startDate, endDate])
+
+  const demoStepsMap = useMemo(() => {
+    if (!demoStepsArray) return null
+    const map: Record<string, number> = {}
+    demoStepsArray.forEach(s => { map[s.date] = s.steps })
+    return map
+  }, [demoStepsArray])
+
+  const effectiveCache = useMemo(() => {
+    if (demo) return demoStepsMap ?? {}
+    return cache
+  }, [demo, demoStepsMap, cache])
+
   const chartData = useMemo(() => {
     const all: { date: string; steps: number }[] = []
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       const key = d.toISOString().split("T")[0]
-      all.push({ date: key, steps: cache[key] ?? 0 })
+      all.push({ date: key, steps: effectiveCache[key] ?? 0 })
     }
     return all
-  }, [cache, startDate, endDate])
+  }, [effectiveCache, startDate, endDate])
 
   const isWindowCached = useMemo(() => {
+    if (demo) return true
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
       if (cache[d.toISOString().split("T")[0]] === undefined) return false
     }
     return true
-  }, [cache, startDate, endDate])
+  }, [cache, startDate, endDate, demo])
 
   const retry = useCallback(() => {
     setError(null)
@@ -75,10 +96,11 @@ export default function GoogleFitWidget({ accessToken, isDark }: Props) {
       })
       return true
     } catch (e: any) {
+      if (e?.response?.status === 401) { onAuthError?.(); return false }
       setError(e?.response?.data?.error?.message || e?.message || "Unknown error")
       return false
     }
-  }, [accessToken])
+  }, [accessToken, onAuthError])
 
   useEffect(() => {
     if (isWindowCached) return
@@ -87,6 +109,7 @@ export default function GoogleFitWidget({ accessToken, isDark }: Props) {
   }, [fetchAndMerge, startDate, endDate, isWindowCached])
 
   useEffect(() => {
+    if (demo) return
     const prefetch = (off: number) => {
       const pe = new Date(); pe.setHours(23, 59, 59, 999); pe.setDate(pe.getDate() - rangeDays * off)
       const ps = new Date(pe); ps.setDate(pe.getDate() - rangeDays); ps.setHours(0, 0, 0, 0)
@@ -99,7 +122,7 @@ export default function GoogleFitWidget({ accessToken, isDark }: Props) {
     }
     if (offset > 0) prefetch(offset - 1)
     prefetch(offset + 1)
-  }, [accessToken, offset, rangeDays, cache, fetchAndMerge])
+  }, [demo, accessToken, offset, rangeDays, cache, fetchAndMerge])
 
   const total = chartData.reduce((s, d) => s + d.steps, 0)
   const avg = chartData.length ? Math.round(total / chartData.length) : 0

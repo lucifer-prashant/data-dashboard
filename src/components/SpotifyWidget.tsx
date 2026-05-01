@@ -1,17 +1,19 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback, useRef, useMemo } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { getNowPlaying, getTopTracks, getTopArtists, getRecentlyPlayed } from "@/lib/spotify"
 import type { NowPlaying, TopTrack, TopArtist, PlayRecord, TimeRange } from "@/lib/spotify"
 import { mergePlays, getPlaysByDateRange, getTotalCount } from "@/lib/playsDb"
 import { cacheGet, cacheSet } from "@/lib/spotifyCache"
+import { getDemoSpotifyData } from "@/lib/demoData"
 import { RefreshCw, Music2, Clock } from "lucide-react"
 
 interface Props {
   accessToken: string
   isDark: boolean
   onNowPlaying?: (np: NowPlaying | null) => void
+  demo?: boolean
 }
 
 const ACCENT = "#1db954"
@@ -36,7 +38,7 @@ function timeAgo(iso: string) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-export default function SpotifyWidget({ accessToken, isDark, onNowPlaying }: Props) {
+export default function SpotifyWidget({ accessToken, isDark, onNowPlaying, demo = false }: Props) {
   const [timeRange, setTimeRange] = useState<TimeRange>("short_term")
   const [view, setView] = useState<"tracks" | "artists" | "recent" | "stats">("tracks")
   const [topTracks, setTopTracks] = useState<TopTrack[]>([])
@@ -50,6 +52,25 @@ export default function SpotifyWidget({ accessToken, isDark, onNowPlaying }: Pro
   const [nowPlaying, setNowPlayingState] = useState<NowPlaying | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Demo data initialization
+  const demoData = useMemo(() => {
+    if (!demo) return null
+    return getDemoSpotifyData()
+  }, [demo])
+
+  useEffect(() => {
+    if (demo && demoData) {
+      setTopTracks(demoData.topTracks)
+      setTopArtists(demoData.topArtists)
+      setRecentTracks(demoData.recent)
+      setNowPlayingState(demoData.nowPlaying)
+      setListenStats(demoData.stats)
+      setLoading(false)
+      setError(null)
+      prevTrackRef.current = demoData.nowPlaying?.trackName ?? null
+    }
+  }, [demo, demoData])
   const prevTrackRef = useRef<string | null>(null)
 
   const refreshStats = useCallback(async () => {
@@ -141,10 +162,15 @@ export default function SpotifyWidget({ accessToken, isDark, onNowPlaying }: Pro
     }
   }, [accessToken, mergeAndRefresh, onNowPlaying])
 
-  useEffect(() => { fetchAll(timeRange) }, [timeRange, fetchAll])
-  useEffect(() => { refreshStats() }, [refreshStats])
+useEffect(() => {
+    if (!demo) {
+      fetchAll(timeRange)
+    }
+  }, [timeRange, fetchAll, demo])
+  useEffect(() => { if (!demo) refreshStats() }, [refreshStats, demo])
 
   useEffect(() => {
+    if (demo) return
     const id = setInterval(async () => {
       try {
         const [np, recent] = await Promise.all([
@@ -161,7 +187,7 @@ export default function SpotifyWidget({ accessToken, isDark, onNowPlaying }: Pro
       } catch {}
     }, 30000)
     return () => clearInterval(id)
-  }, [accessToken, mergeAndRefresh, onNowPlaying])
+  }, [accessToken, mergeAndRefresh, onNowPlaying, demo])
 
   // ── Styles ──
   const card = isDark ? "bg-zinc-900/60 border-zinc-800/60" : "bg-white border-zinc-200"

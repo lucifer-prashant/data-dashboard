@@ -4,18 +4,21 @@ import { useEffect, useState, useMemo, useCallback } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { getGmailCounts } from "@/lib/gmail"
 import { cacheGet, cacheSet } from "@/lib/spotifyCache"
+import { getDemoGmail } from "@/lib/demoData"
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react"
 
 interface Props {
   accessToken: string
   isDark: boolean
+  demo?: boolean
+  onAuthError?: () => void
 }
 
 const ACCENT = "#fbbf24"
 
 type GmailData = { daily: { date: string; count: number }[]; hourly: { hour: number; count: number }[] }
 
-export default function GmailWidget({ accessToken, isDark }: Props) {
+export default function GmailWidget({ accessToken, isDark, demo = false, onAuthError }: Props) {
   const [range, setRange] = useState<"7d" | "30d" | "90d">("30d")
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -38,7 +41,13 @@ export default function GmailWidget({ accessToken, isDark }: Props) {
   }, [rangeDays, offset])
 
   const cacheKey = `${startDate.toISOString().split("T")[0]}_${endDate.toISOString().split("T")[0]}`
-  const cached = cache[cacheKey]
+
+  const demoData = useMemo(() => {
+    if (!demo) return null
+    return getDemoGmail(startDate, endDate)
+  }, [demo, startDate, endDate])
+
+  const cached = demo ? demoData : cache[cacheKey]
 
   const retry = useCallback(() => {
     setError(null)
@@ -50,7 +59,7 @@ export default function GmailWidget({ accessToken, isDark }: Props) {
   }, [cacheKey])
 
   useEffect(() => {
-    if (cached || !accessToken) return
+    if (demo || cached || !accessToken) return
     setLoading(true)
     setError(null)
     getGmailCounts(accessToken, startDate, endDate)
@@ -62,9 +71,12 @@ export default function GmailWidget({ accessToken, isDark }: Props) {
         cacheSet('gmail_cache', toStore)
         return next
       }))
-      .catch((e: any) => setError(e?.response?.data?.error?.message || e?.message || "Unknown error"))
+      .catch((e: any) => {
+        if (e?.response?.status === 401) { onAuthError?.(); return }
+        setError(e?.response?.data?.error?.message || e?.message || "Unknown error")
+      })
       .finally(() => setLoading(false))
-  }, [accessToken, cacheKey])
+  }, [accessToken, cacheKey, demo, onAuthError])
 
   const { daily: dailyData, hourly: hourlyData } = cached ?? { daily: [], hourly: [] }
 

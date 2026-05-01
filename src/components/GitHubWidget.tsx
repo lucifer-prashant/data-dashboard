@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useCallback, useState } from "react"
 import { getAuthoredCommits } from "@/lib/github"
 import { usePersistedCache } from "@/lib/usePersistedCache"
+import { getDemoCommits } from "@/lib/demoData"
 import { RefreshCw } from "lucide-react"
 
 interface Props {
   accessToken: string
   isDark: boolean
+  demo?: boolean
 }
 
 const ACCENT = [129, 140, 248] // indigo-400 rgb
@@ -27,16 +29,15 @@ type WeekRange = typeof WEEK_OPTIONS[number]
 
 type Cell = { date: string; commits: number; future: boolean }
 
-export default function GitHubWidget({ accessToken, isDark }: Props) {
+export default function GitHubWidget({ accessToken, isDark, demo = false }: Props) {
   const [weekRange, setWeekRange] = useState<WeekRange>(26)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [cache, setCache] = usePersistedCache<Record<string, number>>("gh_commits")
-  const [tooltip, setTooltip] = useState<{ date: string; commits: number; x: number; y: number } | null>(null)
+  const storageKey = demo ? "gh_commits_demo" : "gh_commits"
+  const [persistedCache, setCache] = usePersistedCache<Record<string, number>>(storageKey)
 
   const { startDate, endDate } = useMemo(() => {
     const end = new Date(); end.setHours(23, 59, 59, 999)
-    // start = Sunday of the week (weekRange) weeks ago
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const thisSunday = new Date(today); thisSunday.setDate(today.getDate() - today.getDay())
     const start = new Date(thisSunday); start.setDate(thisSunday.getDate() - (weekRange - 1) * 7)
@@ -44,7 +45,24 @@ export default function GitHubWidget({ accessToken, isDark }: Props) {
     return { startDate: start, endDate: end }
   }, [weekRange])
 
+  const demoCommits = useMemo(() => {
+    if (!demo) return null
+    return getDemoCommits(startDate, endDate)
+  }, [demo, startDate, endDate])
+
+  const cache = useMemo(() => {
+    if (demo && demoCommits) {
+      const map: Record<string, number> = {}
+      demoCommits.forEach(c => { map[c.date] = c.commits })
+      return map
+    }
+    return persistedCache
+  }, [demo, demoCommits, persistedCache])
+
+  const [tooltip, setTooltip] = useState<{ date: string; commits: number; x: number; y: number } | null>(null)
+
   const isWindowCached = useMemo(() => {
+    if (demo) return true
     const today = new Date().toISOString().split("T")[0]
     if (cache[today] === undefined) return false
     // spot-check a few dates in range
@@ -52,7 +70,7 @@ export default function GitHubWidget({ accessToken, isDark }: Props) {
       if (cache[d.toISOString().split("T")[0]] === undefined) return false
     }
     return true
-  }, [cache, startDate, endDate])
+  }, [cache, startDate, endDate, demo])
 
   const fetchRange = useCallback(async () => {
     try {
@@ -72,10 +90,14 @@ export default function GitHubWidget({ accessToken, isDark }: Props) {
   }, [accessToken, startDate, endDate])
 
   useEffect(() => {
-    if (isWindowCached) return
+    if (isWindowCached || demo) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
+    setError(null)
     fetchRange().finally(() => setLoading(false))
-  }, [fetchRange, isWindowCached])
+  }, [fetchRange, isWindowCached, demo])
 
   // Build grid: weeks as columns, days (Sun–Sat) as rows
   const { grid, monthLabels } = useMemo(() => {
